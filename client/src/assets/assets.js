@@ -13,24 +13,24 @@ export const assets = {
 export const dummyUsers = [
     {
         "id": "user_1",
-        "name": "Alex Smith",
-        "email": "alexsmith@example.com",
+        "name": "Antony Mbuvi",
+        "email": "test1@example.com",
         "image": profile_img_a,
         "createdAt": "2025-10-06T11:04:03.485Z",
         "updatedAt": "2025-10-06T11:04:03.485Z"
     },
     {
         "id": "user_2",
-        "name": "John Warrel",
-        "email": "johnwarrel@example.com",
+        "name": "James Duncan",
+        "email": "test2@example.com",
         "image": profile_img_j,
         "createdAt": "2025-10-09T13:20:24.360Z",
         "updatedAt": "2025-10-09T13:20:24.360Z"
     },
     {
         "id": "user_3",
-        "name": "Oliver Watts",
-        "email": "oliverwatts@example.com",
+        "name": "Ostine Odhiambo",
+        "email": "test3@example.com",
         "image": profile_img_o,
         "createdAt": "2025-09-01T04:31:22.043Z",
         "updatedAt": "2025-09-26T09:03:37.866Z"
