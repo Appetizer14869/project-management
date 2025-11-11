@@ -1,18 +1,37 @@
 import { Inngest } from "inngest";
 import prisma from "../configs/prisma.js";
 
-// Create a client to send and receive events
 export const inngest = new Inngest({ id: "project-management" });
 
-// --- Sync new user creation ---
+//
+// Shared event names
+//
+const USER_CREATED_EVENTS = [
+  "clerk/user.created",
+  "webhook-integration/user.created"
+];
+
+const USER_UPDATED_EVENTS = [
+  "clerk/user.updated",
+  "webhook-integration/user.updated"
+];
+
+const USER_DELETED_EVENTS = [
+  "clerk/user.deleted",
+  "webhook-integration/user.deleted"
+];
+
+//
+// CREATE user
+//
 const syncUserCreation = inngest.createFunction(
   { id: "sync-user-from-clerk" },
-  { event: "clerk/user.created" },
+  { event: USER_CREATED_EVENTS },
   async ({ event }) => {
-    const { data } = event;
+    const data = event.data;
 
     if (!data?.id) {
-      console.error("❌ Missing user ID in clerk/user.created event:", data);
+      console.error("Missing user ID in user.created event:", data);
       return;
     }
 
@@ -21,55 +40,29 @@ const syncUserCreation = inngest.createFunction(
       update: {
         email: data?.email_addresses?.[0]?.email_address,
         name: `${data?.first_name || ""} ${data?.last_name || ""}`.trim(),
-        image: data?.image_url,
+        image: data?.image_url
       },
       create: {
         id: data.id,
         email: data?.email_addresses?.[0]?.email_address,
         name: `${data?.first_name || ""} ${data?.last_name || ""}`.trim(),
-        image: data?.image_url,
-      },
+        image: data?.image_url
+      }
     });
   }
 );
 
-// --- Sync user deletion ---
-const syncUserDeletion = inngest.createFunction(
-  { id: "delete-user-with-clerk" },
-  { event: "clerk/user.deleted" },
-  async ({ event }) => {
-    const { data } = event;
-
-    if (!data?.id) {
-      console.error("❌ Missing user ID in clerk/user.deleted event:", data);
-      return;
-    }
-
-    try {
-      await prisma.user.delete({
-        where: { id: data.id },
-      });
-      console.log(`✅ Deleted user ${data.id} from database.`);
-    } catch (err) {
-      if (err.code === "P2025") {
-        // Prisma error for "record not found"
-        console.warn(`⚠️ Tried to delete non-existent user: ${data.id}`);
-      } else {
-        console.error("❌ Error deleting user:", err);
-      }
-    }
-  }
-);
-
-// --- Sync user updates ---
+//
+// UPDATE user
+//
 const syncUserUpdation = inngest.createFunction(
   { id: "update-user-from-clerk" },
-  { event: "clerk/user.updated" },
+  { event: USER_UPDATED_EVENTS },
   async ({ event }) => {
-    const { data } = event;
+    const data = event.data;
 
     if (!data?.id) {
-      console.error("❌ Missing user ID in clerk/user.updated event:", data);
+      console.error("Missing user ID in user.updated event:", data);
       return;
     }
 
@@ -78,11 +71,43 @@ const syncUserUpdation = inngest.createFunction(
       data: {
         email: data?.email_addresses?.[0]?.email_address,
         name: `${data?.first_name || ""} ${data?.last_name || ""}`.trim(),
-        image: data?.image_url,
-      },
+        image: data?.image_url
+      }
     });
   }
 );
 
-// --- Export all Inngest functions ---
-export const functions = [syncUserCreation, syncUserDeletion, syncUserUpdation];
+//
+// DELETE user
+//
+const syncUserDeletion = inngest.createFunction(
+  { id: "delete-user-with-clerk" },
+  { event: USER_DELETED_EVENTS },
+  async ({ event }) => {
+    const data = event.data;
+
+    if (!data?.id) {
+      console.error("Missing user ID in user.deleted event:", data);
+      return;
+    }
+
+    try {
+      await prisma.user.delete({
+        where: { id: data.id }
+      });
+      console.log(`Deleted user ${data.id} from database.`);
+    } catch (err) {
+      if (err.code === "P2025") {
+        console.warn(`Attempted to delete non-existent user: ${data.id}`);
+      } else {
+        console.error("Error deleting user:", err);
+      }
+    }
+  }
+);
+
+export const functions = [
+  syncUserCreation,
+  syncUserUpdation,
+  syncUserDeletion
+];
