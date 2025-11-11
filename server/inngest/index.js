@@ -1,113 +1,119 @@
 import { Inngest } from "inngest";
 import prisma from "../configs/prisma.js";
 
+// Create client
 export const inngest = new Inngest({ id: "project-management" });
 
-//
-// Shared event names
-//
-const USER_CREATED_EVENTS = [
-  "clerk/user.created",
-  "webhook-integration/user.created"
-];
+/*
+  ------------------------------------------------------------
+  Helper functions (shared by all events)
+  ------------------------------------------------------------
+*/
 
-const USER_UPDATED_EVENTS = [
-  "clerk/user.updated",
-  "webhook-integration/user.updated"
-];
+async function upsertUser(data) {
+  if (!data?.id) return;
 
-const USER_DELETED_EVENTS = [
-  "clerk/user.deleted",
-  "webhook-integration/user.deleted"
-];
-
-//
-// CREATE user
-//
-const syncUserCreation = inngest.createFunction(
-  { id: "sync-user-from-clerk" },
-  { event: USER_CREATED_EVENTS },
-  async ({ event }) => {
-    const data = event.data;
-
-    if (!data?.id) {
-      console.error("Missing user ID in user.created event:", data);
-      return;
+  await prisma.user.upsert({
+    where: { id: data.id },
+    update: {
+      email: data.email_addresses?.[0]?.email_address,
+      name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
+      image: data.image_url
+    },
+    create: {
+      id: data.id,
+      email: data.email_addresses?.[0]?.email_address,
+      name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
+      image: data.image_url
     }
+  });
+}
 
-    await prisma.user.upsert({
-      where: { id: data.id },
-      update: {
-        email: data?.email_addresses?.[0]?.email_address,
-        name: `${data?.first_name || ""} ${data?.last_name || ""}`.trim(),
-        image: data?.image_url
-      },
-      create: {
-        id: data.id,
-        email: data?.email_addresses?.[0]?.email_address,
-        name: `${data?.first_name || ""} ${data?.last_name || ""}`.trim(),
-        image: data?.image_url
-      }
-    });
+async function updateUser(data) {
+  if (!data?.id) return;
+
+  await prisma.user.update({
+    where: { id: data.id },
+    data: {
+      email: data.email_addresses?.[0]?.email_address,
+      name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
+      image: data.image_url
+    }
+  });
+}
+
+async function deleteUser(id) {
+  if (!id) return;
+
+  try {
+    await prisma.user.delete({ where: { id } });
+  } catch (err) {
+    // ignore record not found
+  }
+}
+
+/*
+  ------------------------------------------------------------
+  CREATE USER
+  ------------------------------------------------------------
+*/
+
+// Clerk: clerk/user.created
+const syncUserCreationClerk = inngest.createFunction(
+  { id: "sync-user-clerk-created" },
+  { event: "clerk/user.created" },
+  async ({ event }) => {
+    await upsertUser(event.data);
   }
 );
 
-//
-// UPDATE user
-//
-const syncUserUpdation = inngest.createFunction(
-  { id: "update-user-from-clerk" },
-  { event: USER_UPDATED_EVENTS },
+// Webhook: webhook-integration/user.created
+const syncUserCreationWebhook = inngest.createFunction(
+  { id: "sync-user-webhook-created" },
+  { event: "webhook-integration/user.created" },
   async ({ event }) => {
-    const data = event.data;
-
-    if (!data?.id) {
-      console.error("Missing user ID in user.updated event:", data);
-      return;
-    }
-
-    await prisma.user.update({
-      where: { id: data.id },
-      data: {
-        email: data?.email_addresses?.[0]?.email_address,
-        name: `${data?.first_name || ""} ${data?.last_name || ""}`.trim(),
-        image: data?.image_url
-      }
-    });
+    await upsertUser(event.data);
   }
 );
 
-//
-// DELETE user
-//
-const syncUserDeletion = inngest.createFunction(
-  { id: "delete-user-with-clerk" },
-  { event: USER_DELETED_EVENTS },
+/*
+  ------------------------------------------------------------
+  UPDATE USER
+  ------------------------------------------------------------
+*/
+
+// Webhook: webhook-integration/user.updated
+const syncUserUpdationWebhook = inngest.createFunction(
+  { id: "sync-user-webhook-updated" },
+  { event: "webhook-integration/user.updated" },
   async ({ event }) => {
-    const data = event.data;
-
-    if (!data?.id) {
-      console.error("Missing user ID in user.deleted event:", data);
-      return;
-    }
-
-    try {
-      await prisma.user.delete({
-        where: { id: data.id }
-      });
-      console.log(`Deleted user ${data.id} from database.`);
-    } catch (err) {
-      if (err.code === "P2025") {
-        console.warn(`Attempted to delete non-existent user: ${data.id}`);
-      } else {
-        console.error("Error deleting user:", err);
-      }
-    }
+    await updateUser(event.data);
   }
 );
 
+/*
+  ------------------------------------------------------------
+  DELETE USER
+  ------------------------------------------------------------
+*/
+
+// Webhook: webhook-integration/user.deleted
+const syncUserDeletionWebhook = inngest.createFunction(
+  { id: "sync-user-webhook-deleted" },
+  { event: "webhook-integration/user.deleted" },
+  async ({ event }) => {
+    await deleteUser(event.data?.id);
+  }
+);
+
+/*
+  ------------------------------------------------------------
+  Export all functions to Inngest
+  ------------------------------------------------------------
+*/
 export const functions = [
-  syncUserCreation,
-  syncUserUpdation,
-  syncUserDeletion
+  syncUserCreationClerk,
+  syncUserCreationWebhook,
+  syncUserUpdationWebhook,
+  syncUserDeletionWebhook
 ];
